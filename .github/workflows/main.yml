@@ -1,0 +1,22 @@
+name: Sync Fork
+
+on:
+  schedule:
+    - cron: '0 19 1,16 * *'   # 每月1号和16号凌晨0点执行
+  workflow_dispatch:        # 允许手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync upstream
+        run: |
+          git remote add upstream https://github.com/evec2025/SmartTube.git
+          git fetch upstream
+          git checkout main
+          git merge upstream/main --no-edit
+          git push
