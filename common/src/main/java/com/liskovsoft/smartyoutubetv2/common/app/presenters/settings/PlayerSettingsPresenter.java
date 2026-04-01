@@ -64,7 +64,7 @@ public class PlayerSettingsPresenter extends BasePresenter<Void> {
         appendVideoZoomCategory(settingsPresenter);
         appendVideoSpeedCategory(settingsPresenter);
         appendAudioLanguageCategory(settingsPresenter);
-        appendAudioShiftCategory(settingsPresenter);
+        appendAudioDelayCategory(settingsPresenter);
         appendMasterVolumeCategory(settingsPresenter);
         appendOKButtonCategory(settingsPresenter);
         appendUIAutoHideCategory(settingsPresenter);
@@ -149,8 +149,8 @@ public class PlayerSettingsPresenter extends BasePresenter<Void> {
         settingsPresenter.appendCategory(category);
     }
 
-    private void appendAudioShiftCategory(AppDialogPresenter settingsPresenter) {
-        OptionCategory category = AppDialogUtil.createAudioShiftCategory(getContext());
+    private void appendAudioDelayCategory(AppDialogPresenter settingsPresenter) {
+        OptionCategory category = AppDialogUtil.createAudioDelayCategory(getContext());
         settingsPresenter.appendCategory(category);
     }
 
@@ -510,14 +510,6 @@ public class PlayerSettingsPresenter extends BasePresenter<Void> {
                 },
                 mPlayerTweaksData.isOculusQuestFixEnabled()));
 
-        options.add(UiOptionItem.from(getContext().getString(R.string.prefer_google_dns),
-                getContext().getString(R.string.prefer_ipv4_desc),
-                option -> {
-                    mPlayerTweaksData.setPreferredDnsType(option.isSelected() ? PlayerTweaksData.DNS_TYPE_GOOGLE : PlayerTweaksData.DNS_TYPE_SYSTEM);
-                    mRestartApp = true;
-                },
-                mPlayerTweaksData.getPreferredDnsType() == PlayerTweaksData.DNS_TYPE_GOOGLE));
-
         options.add(UiOptionItem.from(getContext().getString(R.string.prefer_ipv4),
                 getContext().getString(R.string.prefer_ipv4_desc),
                 option -> {
@@ -526,11 +518,13 @@ public class PlayerSettingsPresenter extends BasePresenter<Void> {
                 },
                 mPlayerTweaksData.getPreferredDnsType() == PlayerTweaksData.DNS_TYPE_IPV4));
 
-        // Disable long press on buggy controllers.
-        options.add(UiOptionItem.from(getContext().getString(R.string.disable_ok_long_press),
-                getContext().getString(R.string.disable_ok_long_press_desc),
-                option -> mGeneralData.setOkButtonLongPressDisabled(option.isSelected()),
-                mGeneralData.isOkButtonLongPressDisabled()));
+        options.add(UiOptionItem.from(getContext().getString(R.string.prefer_google_dns),
+                getContext().getString(R.string.prefer_ipv4_desc),
+                option -> {
+                    mPlayerTweaksData.setPreferredDnsType(option.isSelected() ? PlayerTweaksData.DNS_TYPE_GOOGLE : PlayerTweaksData.DNS_TYPE_SYSTEM);
+                    mRestartApp = true;
+                },
+                mPlayerTweaksData.getPreferredDnsType() == PlayerTweaksData.DNS_TYPE_GOOGLE));
 
         options.add(UiOptionItem.from(getContext().getString(R.string.audio_sync_fix),
                 getContext().getString(R.string.audio_sync_fix_desc),
@@ -587,8 +581,8 @@ public class PlayerSettingsPresenter extends BasePresenter<Void> {
 
         options.add(UiOptionItem.from(getContext().getString(R.string.alt_presets_behavior),
                 getContext().getString(R.string.alt_presets_behavior_desc),
-                option -> mPlayerTweaksData.setNoFpsPresetsEnabled(option.isSelected()),
-                mPlayerTweaksData.isNoFpsPresetsEnabled()));
+                option -> mPlayerTweaksData.setAltPresetsEnabled(option.isSelected()),
+                mPlayerTweaksData.isAltPresetsEnabled()));
 
         options.add(UiOptionItem.from(getContext().getString(R.string.prefer_avc_over_vp9),
                 getContext().getString(R.string.prefer_avc_over_vp9_desc),

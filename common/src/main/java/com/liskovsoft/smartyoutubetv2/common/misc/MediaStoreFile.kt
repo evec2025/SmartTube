@@ -2,6 +2,7 @@ package com.liskovsoft.smartyoutubetv2.common.misc
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.sqlite.SQLiteConstraintException
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -46,7 +47,8 @@ internal class MediaStoreFile @JvmOverloads constructor(
     private val context: Context,
     private val path: String, // relative to rootDir
     private val rootDir: String = context.packageName,
-    private val publicDirType: String = Environment.DIRECTORY_DOCUMENTS
+    private val publicDirType: String = Environment.DIRECTORY_DOCUMENTS,
+    private val mimeType: String = "application/octet-stream" // generic file, only for Documents/Download
 ) {
     private var cachedUri: Uri? = null
 
@@ -73,10 +75,10 @@ internal class MediaStoreFile @JvmOverloads constructor(
     private fun findUri(): Uri? {
         if (cachedUri != null) return cachedUri
 
-        val projection = arrayOf(MediaStore.Files.FileColumns._ID)
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
 
         val selection =
-            "${MediaStore.Files.FileColumns.DISPLAY_NAME}=? AND ${MediaStore.Files.FileColumns.RELATIVE_PATH}=?"
+            "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
 
         val selectionArgs = arrayOf(
             name(),
@@ -84,7 +86,7 @@ internal class MediaStoreFile @JvmOverloads constructor(
         )
 
         resolver.query(
-            MediaStore.Files.getContentUri("external"),
+            collectionUri(),
             projection,
             selection,
             selectionArgs,
@@ -93,7 +95,7 @@ internal class MediaStoreFile @JvmOverloads constructor(
             if (cursor.moveToFirst()) {
                 val id = cursor.getLong(0)
                 cachedUri = Uri.withAppendedPath(
-                    MediaStore.Files.getContentUri("external"),
+                    collectionUri(),
                     id.toString()
                 )
                 return cachedUri
@@ -112,16 +114,16 @@ internal class MediaStoreFile @JvmOverloads constructor(
      * So if you want a folder to “exist” even if it’s empty, you create a hidden placeholder file called .dir inside that folder.
      */
     fun isDirectory(): Boolean {
-        val dirMarker = MediaStoreFile(context, "$path/.dir", rootDir)
+        val dirMarker = MediaStoreFile(context, "$path/.dir", rootDir, publicDirType)
         if (dirMarker.exists()) return true
 
-        val projection = arrayOf(MediaStore.Files.FileColumns._ID)
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
         val selection =
-            "${MediaStore.Files.FileColumns.RELATIVE_PATH} LIKE ?"
+            "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
         val selectionArgs = arrayOf(fullRelativeDir() + "/%")
 
         resolver.query(
-            MediaStore.Files.getContentUri("external"),
+            collectionUri(),
             projection,
             selection,
             selectionArgs,
@@ -137,15 +139,21 @@ internal class MediaStoreFile @JvmOverloads constructor(
         if (exists()) return false
 
         val values = ContentValues().apply {
-            put(MediaStore.Files.FileColumns.DISPLAY_NAME, name())
-            put(MediaStore.Files.FileColumns.MIME_TYPE, "application/octet-stream")
-            put(MediaStore.Files.FileColumns.RELATIVE_PATH, relativePath())
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name())
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath())
         }
 
-        val uri = resolver.insert(
-            MediaStore.Files.getContentUri("external"),
-            values
-        )
+        val uri = try {
+            resolver.insert(
+                collectionUri(),
+                values
+            )
+        } catch (e: SQLiteConstraintException) {
+            // The file already exists (by me or someone else)
+            // android.database.sqlite.SQLiteConstraintException: UNIQUE constraint failed: files._data (code 2067 SQLITE_CONSTRAINT_UNIQUE)
+            return false
+        }
 
         cachedUri = uri
         return uri != null
@@ -160,7 +168,7 @@ internal class MediaStoreFile @JvmOverloads constructor(
         for (part in parts) {
             if (part.isEmpty()) continue
             current = if (current.isEmpty()) part else "$current/$part"
-            val dummy = MediaStoreFile(context, "$current/.dir", rootDir)
+            val dummy = MediaStoreFile(context, "$current/.dir", rootDir, publicDirType)
             if (!dummy.exists()) {
                 dummy.createNewFile()
             }
@@ -178,18 +186,18 @@ internal class MediaStoreFile @JvmOverloads constructor(
         val list = mutableListOf<MediaStoreFile>()
 
         val projection = arrayOf(
-            MediaStore.Files.FileColumns.DISPLAY_NAME
+            MediaStore.MediaColumns.DISPLAY_NAME
         )
 
         val selection =
-            "${MediaStore.Files.FileColumns.RELATIVE_PATH}=?"
+            "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
 
         val selectionArgs = arrayOf(
             fullRelativeDir() + "/"
         )
 
         resolver.query(
-            MediaStore.Files.getContentUri("external"),
+            collectionUri(),
             projection,
             selection,
             selectionArgs,
@@ -198,7 +206,7 @@ internal class MediaStoreFile @JvmOverloads constructor(
             while (cursor.moveToNext()) {
                 val fileName = cursor.getString(0)
                 if (fileName != ".dir") {
-                    list.add(MediaStoreFile(context, "$path/$fileName", rootDir))
+                    list.add(MediaStoreFile(context, "$path/$fileName", rootDir, publicDirType))
                 }
             }
         }
@@ -258,9 +266,9 @@ internal class MediaStoreFile @JvmOverloads constructor(
      */
     fun child(name: String): MediaStoreFile {
         return if (path.isEmpty())
-            MediaStoreFile(context, name, rootDir)
+            MediaStoreFile(context, name, rootDir, publicDirType)
         else
-            MediaStoreFile(context, "$path/$name", rootDir)
+            MediaStoreFile(context, "$path/$name", rootDir, publicDirType)
     }
 
     fun resolve(): String {
@@ -284,8 +292,8 @@ internal class MediaStoreFile @JvmOverloads constructor(
         val uri = findUri() ?: return false
 
         val values = ContentValues().apply {
-            put(MediaStore.Files.FileColumns.DISPLAY_NAME, dest.name())
-            put(MediaStore.Files.FileColumns.RELATIVE_PATH, dest.relativePath())
+            put(MediaStore.MediaColumns.DISPLAY_NAME, dest.name())
+            put(MediaStore.MediaColumns.RELATIVE_PATH, dest.relativePath())
         }
 
         val updated = resolver.update(uri, values, null, null) > 0
@@ -297,7 +305,7 @@ internal class MediaStoreFile @JvmOverloads constructor(
 
     fun length(): Long {
         val uri = findUri() ?: return 0
-        val projection = arrayOf(MediaStore.Files.FileColumns.SIZE)
+        val projection = arrayOf(MediaStore.MediaColumns.SIZE)
 
         resolver.query(uri, projection, null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
@@ -311,7 +319,7 @@ internal class MediaStoreFile @JvmOverloads constructor(
 
     fun lastModified(): Long {
         val uri = findUri() ?: return 0
-        val projection = arrayOf(MediaStore.Files.FileColumns.DATE_MODIFIED)
+        val projection = arrayOf(MediaStore.MediaColumns.DATE_MODIFIED)
 
         resolver.query(uri, projection, null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
@@ -325,7 +333,7 @@ internal class MediaStoreFile @JvmOverloads constructor(
         val uri = findUri() ?: return false
 
         val values = ContentValues().apply {
-            put(MediaStore.Files.FileColumns.DATE_MODIFIED, timeMillis / 1000) // seconds
+            put(MediaStore.MediaColumns.DATE_MODIFIED, timeMillis / 1000) // seconds
         }
 
         val updated = resolver.update(uri, values, null, null) > 0
@@ -337,7 +345,7 @@ internal class MediaStoreFile @JvmOverloads constructor(
      */
     fun getStoredName(): String? {
         val uri = findUri() ?: return null
-        val projection = arrayOf(MediaStore.Files.FileColumns.DISPLAY_NAME)
+        val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
         resolver.query(uri, projection, null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) return cursor.getString(0)
         }
@@ -378,6 +386,19 @@ internal class MediaStoreFile @JvmOverloads constructor(
             false
         } catch (e: Exception) {
             false
+        }
+    }
+
+    private fun collectionUri(): Uri {
+        return when (publicDirType) {
+            Environment.DIRECTORY_MUSIC ->
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            Environment.DIRECTORY_MOVIES ->
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            Environment.DIRECTORY_PICTURES ->
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            else ->
+                MediaStore.Files.getContentUri("external")
         }
     }
 }

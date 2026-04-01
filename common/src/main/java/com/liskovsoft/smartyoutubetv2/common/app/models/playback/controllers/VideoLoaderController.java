@@ -137,8 +137,12 @@ public class VideoLoaderController extends BasePlayerController {
                 reloadVideo();
             } else if (!getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
                 // Faster source may differ across a devices. Try them one by one.
-                switchNextEngine();
-                restartEngine();
+                //switchNextEngine();
+                //restartEngine();
+                if (!isFasterDataSourceEnabled()) {
+                    enableFasterDataSource();
+                    restartEngine();
+                }
             }
         }
     }
@@ -279,7 +283,8 @@ public class VideoLoaderController extends BasePlayerController {
         float sleepHours = getPlayerData().getSleepTimerHours();
         if (sleepHours > 0 && System.currentTimeMillis() - mSleepTimerStartMs > sleepHours * 60 * 60 * 1_000) {
             getPlayer().setPlayWhenReady(false);
-            getPlayer().setTitle(getContext().getString(R.string.sleep_timer));
+            getPlayer().setTitle(getContext().getString(R.string.player_sleep_timer)
+                    + " (" + getContext().getResources().getQuantityString(R.plurals.hours, (int) sleepHours, Helpers.toString(sleepHours)) + ")");
             getPlayer().showOverlay(true);
             Helpers.enableScreensaver(getActivity());
         }
@@ -376,6 +381,7 @@ public class VideoLoaderController extends BasePlayerController {
             bgImageUrl = getVideo().getBackgroundUrl();
 
             // 18+ video or the video is hidden/removed
+            player.showOverlay(true);
             scheduleNextVideoTimer(5_000);
 
             //if (formatInfo.isUnknownError()) { // the bot error or the video not available
@@ -409,6 +415,7 @@ public class VideoLoaderController extends BasePlayerController {
             player.showProgressBar(false);
             mSuggestionsController.loadSuggestions(getVideo());
             bgImageUrl = getVideo().getBackgroundUrl();
+            player.showOverlay(true);
             scheduleReloadVideoTimer(30 * 1_000);
         }
 
@@ -422,7 +429,6 @@ public class VideoLoaderController extends BasePlayerController {
 
         if (getPlayer().isEngineInitialized()) {
             Log.d(TAG, "Reloading the video...");
-            getPlayer().showOverlay(true);
             Utils.postDelayed(mReloadVideo, delayMs);
         }
     }
@@ -434,7 +440,6 @@ public class VideoLoaderController extends BasePlayerController {
 
         if (getPlayer().isEngineInitialized()) {
             Log.d(TAG, "Starting the next video...");
-            getPlayer().showOverlay(true);
             Utils.postDelayed(mLoadNext, delayMs);
         }
     }
@@ -442,7 +447,6 @@ public class VideoLoaderController extends BasePlayerController {
     private void scheduleRebootAppTimer(int delayMs) {
         if (getPlayer() != null) {
             Log.d(TAG, "Rebooting the app...");
-            getPlayer().showOverlay(true);
             Utils.postDelayed(mRebootApp, delayMs);
         }
     }
@@ -450,7 +454,6 @@ public class VideoLoaderController extends BasePlayerController {
     private void scheduleRestartEngineTimer(int delayMs) {
         if (getPlayer() != null) {
             Log.d(TAG, "Restarting the engine...");
-            getPlayer().showOverlay(true);
             Utils.postDelayed(mRestartEngine, delayMs);
         }
     }
@@ -484,10 +487,12 @@ public class VideoLoaderController extends BasePlayerController {
     }
 
     private void runFormatErrorAction(Throwable error) {
+        if (getPlayer() == null) {
+            return;
+        }
+
         if (isEmbedPlayer()) {
-            if (getPlayer() != null) {
-                getPlayer().finish();
-            }
+            getPlayer().finish();
             return;
         }
 
@@ -578,15 +583,26 @@ public class VideoLoaderController extends BasePlayerController {
             // "Unable to connect to", "Invalid NAL length", "Response code: 421",
             // "Response code: 404", "Response code: 429", "Invalid integer size",
             // "Unexpected ArrayIndexOutOfBoundsException", "Unexpected IndexOutOfBoundsException"
-            if (Helpers.startsWithAny(errorContent, "Response code: 403")) {
-                YouTubeServiceManager.instance().applyNoPlaybackFix();
-            } else if (isSubtitlesEnabled()) {
+
+            //if (Helpers.startsWithAny(errorContent, "Response code: 403")) {
+            //    YouTubeServiceManager.instance().applyNoPlaybackFix();
+            //} else if (isSubtitlesEnabled()) {
+            //    disableSubtitles(); // Response code: 429
+            //} else if (getPlayerTweaksData().isHighBitrateFormatsEnabled()) {
+            //    getPlayerTweaksData().setHighBitrateFormatsEnabled(false); // Response code: 429
+            //} else {
+            //    YouTubeServiceManager.instance().applyNoPlaybackFix(); // Response code: 403
+            //}
+
+            boolean isGeneralError = Helpers.startsWithAny(errorContent, "Response code: 429", "Response code: 500");
+            if (isGeneralError && isSubtitlesEnabled()) {
                 disableSubtitles(); // Response code: 429
-            } else if (getPlayerTweaksData().isHighBitrateFormatsEnabled()) {
+            } else if (isGeneralError && getPlayerTweaksData().isHighBitrateFormatsEnabled()) {
                 getPlayerTweaksData().setHighBitrateFormatsEnabled(false); // Response code: 429
             } else {
                 YouTubeServiceManager.instance().applyNoPlaybackFix(); // Response code: 403
             }
+
             restartEngine = false;
             showMessage = false;
         } else if (type == PlayerEventListener.ERROR_TYPE_RENDERER && rendererIndex == PlayerEventListener.RENDERER_INDEX_SUBTITLE) {
@@ -606,7 +622,12 @@ public class VideoLoaderController extends BasePlayerController {
             restartEngine = false;
         } else if (type == PlayerEventListener.ERROR_TYPE_UNEXPECTED) {
             // Hide unknown errors on all devices
-            showMessage = false;
+            //showMessage = true;
+            // IllegalStateException: Buffer too small (5242880 < 7208383)
+            if (Helpers.startsWithAny(errorContent, "Buffer too small")) {
+                getPlayerData().setVideoBufferType(getPlayerData().getVideoBufferType() == PlayerData.BUFFER_LOW
+                        ? PlayerData.BUFFER_MEDIUM : PlayerData.BUFFER_HIGH);
+            }
         }
 
         if (showMessage) {

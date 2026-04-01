@@ -22,6 +22,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public class BackupAndRestoreHelper implements OnResult {
+    public static final String BACKUP_FOLDER_NAME = "SmartTubeBackup";
     private static final int REQ_PICK_FILES = 1001;
     private final Context mContext;
     private Runnable mOnSuccess;
@@ -39,26 +40,32 @@ public class BackupAndRestoreHelper implements OnResult {
     public void exportAppMediaFolder() {
         File mediaDir = FileHelpers.getExternalMediaDirectory(mContext);
         File dataDir = new File(mediaDir, "data");
-        if (!dataDir.exists() || FileHelpers.isEmpty(dataDir)) return;
+        if (!dataDir.exists() || FileHelpers.isEmpty(dataDir) || VERSION.SDK_INT < 29) return;
 
-        String backupZipName = "backup_" + mContext.getPackageName() + ".zip";
-        File zipFile = new File(mediaDir, backupZipName);
-        ZipHelper2.zipDirectory(dataDir, zipFile);
+        String backupZipName = getSavedBackupZipName();
 
-        if (VERSION.SDK_INT >= 29 && zipFile.exists()) {
-            String oldBackupZipName = getGeneralData().getBackupZipName();
-            if (oldBackupZipName != null && oldBackupZipName.endsWith(".zip")) {
-                backupZipName = oldBackupZipName;
-            }
-            MediaStoreFile file = new MediaStoreFile(mContext, backupZipName, "SmartTubeBackup");
-            if (!file.isWritable()) {
-                backupZipName = "backup_" + mContext.getPackageName() + "_" + System.currentTimeMillis() + ".zip";
-                file = new MediaStoreFile(mContext, backupZipName, "SmartTubeBackup");
-            }
+        MediaStoreFile file = new MediaStoreFile(mContext, backupZipName, BACKUP_FOLDER_NAME);
+        if (!file.isWritable()) {
+            backupZipName = createBackupZipNameWithTimestamp();
+            getGeneralData().setBackupZipName(backupZipName);
+            file = new MediaStoreFile(mContext, backupZipName, BACKUP_FOLDER_NAME);
+        }
 
-            if (file.isWritable()) {
+        if (!file.isWritable()) {
+            deleteTimeStamp(); // User copied full old media directory (with the old timestamp)
+            backupZipName = createBackupZipNameWithTimestamp();
+            getGeneralData().setBackupZipName(backupZipName);
+            file = new MediaStoreFile(mContext, backupZipName, BACKUP_FOLDER_NAME);
+        }
+
+        if (file.isWritable()) {
+            final File zipFile = new File(mediaDir, backupZipName);
+            ZipHelper2.zipDirectory(dataDir, zipFile);
+
+            if (zipFile.exists()) {
                 file.copyFrom(zipFile);
-                getGeneralData().setBackupZipName(backupZipName);
+                // Delete temporary zip
+                zipFile.delete();
             }
         }
 
@@ -128,49 +135,35 @@ public class BackupAndRestoreHelper implements OnResult {
     @Override
     public void onResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQ_PICK_FILES && resultCode == Activity.RESULT_OK) {
-
             if (data == null) return;
-
-            File mediaDir = FileHelpers.getExternalMediaDirectory(mContext);
 
             Uri uri = data.getData();
             if (uri == null && data.getClipData() != null) {
                 uri = data.getClipData().getItemAt(0).getUri();
             }
-            if (uri == null) return;
 
-            File zipFile = new File(mediaDir, "restore.zip");
-            copyUriToDir(uri, zipFile);
-
-            unpackTempZip(zipFile);
-
-            mOnSuccess.run();
+            unpackTempZip(uri, () -> mOnSuccess.run(), null);
         }
     }
 
     public void handleIncomingZip(Intent intent) {
-        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return;
-
-        Uri zipUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-        if (zipUri == null) {
-            Toast.makeText(mContext, "No ZIP received", Toast.LENGTH_SHORT).show();
+        if (intent == null) {
             return;
         }
 
-        try {
-            File mediaDir = FileHelpers.getExternalMediaDirectory(mContext);
+        Uri zipUri = null;
 
-            // Copy ZIP from URI to temporary file
-            File tempZip = new File(mediaDir, "imported_backup.zip");
-            copyUriToFile(zipUri, tempZip);
-
-            unpackTempZip(tempZip);
-
-            BackupSettingsPresenter.instance(mContext).showLocalRestoreDialogApi30();
-        } catch (Exception e) {
-            e.printStackTrace();
-            Toast.makeText(mContext, "Failed to restore backup", Toast.LENGTH_SHORT).show();
+        if (Intent.ACTION_VIEW.equals(intent.getAction())) {
+            zipUri = intent.getData();
+        } else if (Intent.ACTION_SEND.equals(intent.getAction())) {
+            zipUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
         }
+
+        unpackTempZip(
+                zipUri,
+                () -> BackupSettingsPresenter.instance(mContext).showLocalRestoreDialogApi30(),
+                () -> Toast.makeText(mContext, "Failed to restore backup", Toast.LENGTH_SHORT).show()
+        );
     }
 
     public void unpackTempZip(File tempZip) {
@@ -195,6 +188,33 @@ public class BackupAndRestoreHelper implements OnResult {
 
         // Delete the temporary ZIP
         tempZip.delete();
+    }
+
+    private void unpackTempZip(Uri zipUri, Runnable onSuccess, Runnable onError) {
+        if (zipUri == null) {
+            Toast.makeText(mContext, "No ZIP received", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        try {
+            File mediaDir = FileHelpers.getExternalMediaDirectory(mContext);
+
+            // Copy ZIP from URI to the temporary file
+            String backupZipName = getSavedBackupZipName();
+            File tempZip = new File(mediaDir, backupZipName);
+            copyUriToFile(zipUri, tempZip);
+
+            unpackTempZip(tempZip);
+
+            if (onSuccess != null) {
+                onSuccess.run();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            if (onError != null) {
+                onError.run();
+            }
+        }
     }
 
     private void copyUriToDir(Uri uri, File targetDir) {
@@ -254,5 +274,42 @@ public class BackupAndRestoreHelper implements OnResult {
 
     private GeneralData getGeneralData() {
         return GeneralData.instance(mContext);
+    }
+    
+    private String createBackupZipNameWithTimestamp() {
+        return mContext.getPackageName() + "_" + getTimeStamp() + ".zip";
+    }
+
+    private String getTimeStamp() {
+        File timestampFile = getTimestampFile();
+        if (timestampFile.exists()) {
+            return FileHelpers.getFileContents(timestampFile);
+        }
+
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        FileHelpers.stringToFile(timestamp, timestampFile);
+        return timestamp;
+    }
+
+    private void deleteTimeStamp() {
+        File timestampFile = getTimestampFile();
+        if (timestampFile.exists()) {
+            timestampFile.delete();
+        }
+    }
+
+    private File getTimestampFile() {
+        File mediaDir = FileHelpers.getExternalMediaDirectory(mContext);
+        File timestampFile = new File(mediaDir, "timestamp.txt");
+        return timestampFile;
+    }
+
+    private String getSavedBackupZipName() {
+        String oldBackupZipName = getGeneralData().getBackupZipName();
+        if (oldBackupZipName == null || !oldBackupZipName.endsWith(".zip")) {
+            oldBackupZipName = createBackupZipNameWithTimestamp();
+            getGeneralData().setBackupZipName(oldBackupZipName);
+        }
+        return oldBackupZipName;
     }
 }

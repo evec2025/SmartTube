@@ -571,7 +571,7 @@ public class PlayerUIController extends BasePlayerController {
 
     @Override
     public void onButtonClicked(int buttonId, int buttonState) {
-        if (getPlayer() == null || getPlayer().getButtonState(buttonId) != buttonState) {
+        if (getPlayer() == null) {
             return;
         }
 

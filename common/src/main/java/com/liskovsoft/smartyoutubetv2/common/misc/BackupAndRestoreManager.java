@@ -2,6 +2,7 @@ package com.liskovsoft.smartyoutubetv2.common.misc;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.os.Build.VERSION;
 import android.os.Environment;
 import android.os.Handler;
 
@@ -139,7 +140,7 @@ public class BackupAndRestoreManager implements MotherActivity.OnPermissions {
 
         File currentBackup = getBackup();
 
-        if (currentBackup == null) {
+        if (currentBackup == null || !hasStoragePermissions(mContext)) {
             Log.d(TAG, "Oops. Backup location not writable.");
             return;
         }
@@ -275,21 +276,18 @@ public class BackupAndRestoreManager implements MotherActivity.OnPermissions {
         }
     }
 
-    public String getBackupPath() {
-        File currentBackup = getBackup();
-
-        return currentBackup != null ? currentBackup.toString() : null;
-    }
-
     public String getBackupRootPath() {
         // NOTE: Android 11+ only backup through the file manager (no shared dir)
-        return String.format("%s/data", getExternalStorageDirectory());
+        if (hasAccessOnlyToAppFolders() && VERSION.SDK_INT > 29) {
+            return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).getAbsolutePath()
+                    + "/" + BackupAndRestoreHelper.BACKUP_FOLDER_NAME;
+        }
+
+        return getRestoreRootPath();
     }
 
-    public String getBackupPathCheck() {
-        File currentBackup = getBackupCheck();
-
-        return currentBackup != null ? currentBackup.toString() : null;
+    public String getRestoreRootPath() {
+        return String.format("%s/data", getExternalStorageDirectory());
     }
 
     public void getBackupNames(OnBackupNames callback) {
@@ -369,7 +367,8 @@ public class BackupAndRestoreManager implements MotherActivity.OnPermissions {
             for (File file : files) {
                 if (file.getName().endsWith(".zip")) {
                     mHelper.unpackTempZip(file);
-                    break;
+                    // More than one zip file
+                    //break;
                 }
             }
         }
