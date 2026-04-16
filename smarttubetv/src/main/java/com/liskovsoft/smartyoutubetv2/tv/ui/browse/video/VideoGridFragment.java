@@ -16,6 +16,7 @@ import com.liskovsoft.smartyoutubetv2.common.app.presenters.interfaces.VideoGrou
 import com.liskovsoft.smartyoutubetv2.common.misc.TickleManager;
 import com.liskovsoft.smartyoutubetv2.common.prefs.MainUIData;
 import com.liskovsoft.smartyoutubetv2.common.utils.LoadingManager;
+import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
 import com.liskovsoft.smartyoutubetv2.tv.R;
 import com.liskovsoft.smartyoutubetv2.tv.adapter.VideoGroupObjectAdapter;
 import com.liskovsoft.smartyoutubetv2.tv.presenter.CustomVerticalGridPresenter;
@@ -47,6 +48,10 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        if (getActivity() == null) {
+            throw new IllegalStateException("VideoGridFragment doesn't attached to the activity");
+        }
 
         mMainPresenter = getMainPresenter();
         mCardPresenter = isShorts() ? new ShortsCardPresenter() : new VideoCardPresenter();
@@ -189,8 +194,6 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
     }
 
     private void restorePosition() {
-        LoadingManager.showLoading(getContext(), true); // Restore task takes some time
-
         setPosition(mSelectedItemIndex);
         selectItem(mSelectedItem);
 
@@ -205,6 +208,9 @@ public class VideoGridFragment extends GridFragment implements VideoSection {
         } else {
             mMainPresenter.onScrollEnd((Video) mGridAdapter.get(mGridAdapter.size() - 1));
         }
+
+        // Run after all rx handlers
+        Utils.post(() -> LoadingManager.showLoading(getContext(), true));
     }
 
     /**

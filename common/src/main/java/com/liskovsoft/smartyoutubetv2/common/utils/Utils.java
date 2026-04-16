@@ -84,6 +84,7 @@ import com.liskovsoft.smartyoutubetv2.common.misc.MotherActivity;
 import com.liskovsoft.smartyoutubetv2.common.misc.RemoteControlService;
 import com.liskovsoft.smartyoutubetv2.common.misc.RemoteControlWorker;
 import com.liskovsoft.smartyoutubetv2.common.misc.ScreensaverManager;
+import com.liskovsoft.smartyoutubetv2.common.prefs.BlockedChannelData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.GeneralData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.HiddenPrefs;
 import com.liskovsoft.smartyoutubetv2.common.prefs.MainUIData;
@@ -94,6 +95,7 @@ import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
 
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -1168,7 +1170,7 @@ public class Utils {
         return randomIndex;
     }
 
-    public static void addMyCallback(List<Runnable> myCallbacks, Runnable callback) {
+    public static void addMyCallback(Collection<Runnable> myCallbacks, Runnable callback) {
         if (myCallbacks == null || callback == null) {
             return;
         }
@@ -1188,7 +1190,7 @@ public class Utils {
         }
     }
 
-    public static void runMyCallbacks(List<Runnable> myCallbacks) {
+    public static void runMyCallbacks(Collection<Runnable> myCallbacks) {
         if (myCallbacks == null || myCallbacks.isEmpty()) {
             return;
         }
@@ -1282,5 +1284,6 @@ public class Utils {
         GeneralData.instance(context).persistNow();
         MediaServiceData mediaServiceData = MediaServiceData.instance();
         mediaServiceData.persistNow();
+        BlockedChannelData.instance(context).persistNow();
     }
 }

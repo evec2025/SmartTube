@@ -75,6 +75,11 @@ public class VideoLoaderController extends BasePlayerController {
             applyPlaybackMode(getPlaybackMode());
         }
     };
+    private final Runnable mShowProgressBar = () -> {
+        if (getPlayer() != null) {
+            getPlayer().showProgressBar(true);
+        }
+    };
     private Pair<Integer, Long> mBufferingCount;
 
     public VideoLoaderController() {
@@ -119,30 +124,16 @@ public class VideoLoaderController extends BasePlayerController {
     }
 
     private void onLongBuffering() {
-        if (getPlayer() == null || getVideo() == null) {
-            return;
-        }
-
-        // Stream end check (hangs on buffering)
-        if (getPlayerTweaksData().isHighBitrateFormatsEnabled()) {
-            getPlayerTweaksData().setHighBitrateFormatsEnabled(false); // Response code: 429
-            reloadVideo();
-        } else if ((!getVideo().isLive || getVideo().isLiveEnd)
-                && getPlayer().getDurationMs() - getPlayer().getPositionMs() < STREAM_END_THRESHOLD_MS) {
+        if (isPlaybackEnded()) {
             getMainController().onPlayEnd();
-        } else if (!getVideo().isLive && !getVideo().isLiveEnd) {
-            if (isSubtitlesEnabled()) {
-                // Long loading subtitles cause hangs
-                disableSubtitles();
-                reloadVideo();
-            } else if (!getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
-                // Faster source may differ across a devices. Try them one by one.
-                //switchNextEngine();
-                //restartEngine();
-                if (!isFasterDataSourceEnabled()) {
-                    enableFasterDataSource();
-                    restartEngine();
-                }
+        } else if (isOfflineVideo() && isSubtitlesEnabled()) {
+            // Long loading subtitles cause hangs
+            disableSubtitles();
+            reloadVideo();
+        } else if (!getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
+            if (!isFasterDataSourceEnabled()) {
+                enableFasterDataSource();
+                restartEngine();
             }
         }
     }
@@ -338,7 +329,9 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
-        getPlayer().showProgressBar(true);
+        // Fix no progress on next video (the engine may still buffering a bit)
+        //getPlayer().showProgressBar(true);
+        Utils.post(mShowProgressBar);
         disposeActions();
 
         ServiceManager service = YouTubeServiceManager.instance();
@@ -535,6 +528,8 @@ public class VideoLoaderController extends BasePlayerController {
 
         if (restart) {
             restartEngine();
+        } else if (isPlaybackEnded()) {
+            getMainController().onPlayEnd();
         } else {
             reloadVideo();
         }
@@ -563,7 +558,7 @@ public class VideoLoaderController extends BasePlayerController {
                 getPlayerTweaksData().setSectionPlaylistEnabled(false);
                 restartEngine = false;
             }
-        } else if (Helpers.containsAny(errorContent, "Exception in CronetUrlRequest", "Response code: 503") && !getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
+        } else if (Helpers.containsAny(errorContent, "Exception in CronetUrlRequest") && !getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
             if (getVideo() != null && !getVideo().isLive) { // Finished live stream may provoke errors in Cronet
                 getPlayerTweaksData().setPlayerDataSource(PlayerTweaksData.PLAYER_DATA_SOURCE_DEFAULT);
             } else {
@@ -628,6 +623,10 @@ public class VideoLoaderController extends BasePlayerController {
                 getPlayerData().setVideoBufferType(getPlayerData().getVideoBufferType() == PlayerData.BUFFER_LOW
                         ? PlayerData.BUFFER_MEDIUM : PlayerData.BUFFER_HIGH);
             }
+
+            if (errorContent == null) {
+                YouTubeServiceManager.instance().applyNoPlaybackFix();
+            }
         }
 
         if (showMessage) {
@@ -678,7 +677,7 @@ public class VideoLoaderController extends BasePlayerController {
                 errorTitle = getContext().getString(msgResId);
                 break;
             case PlayerEventListener.ERROR_TYPE_UNEXPECTED:
-                errorTitle = getContext().getString(R.string.msg_player_error_unexpected);
+                errorTitle = getContext().getString(R.string.player_unexpected_error);
                 break;
             default:
                 errorTitle = getContext().getString(R.string.msg_player_error, type);
@@ -1022,5 +1021,22 @@ public class VideoLoaderController extends BasePlayerController {
 
         getPlayerData().setSubtitlesPerChannelEnabled(false); // Important!
         getPlayerData().setFormat(FormatItem.SUBTITLE_NONE);
+    }
+
+    private boolean isPlaybackEnded() {
+        if (getPlayer() == null || getVideo() == null) {
+            return false;
+        }
+
+        return (!getVideo().isLive || getVideo().isLiveEnd)
+                && getPlayer().getDurationMs() - getPlayer().getPositionMs() < STREAM_END_THRESHOLD_MS;
+    }
+
+    private boolean isOfflineVideo() {
+        if (getPlayer() == null || getVideo() == null) {
+            return false;
+        }
+
+        return !getVideo().isLive && !getVideo().isLiveEnd;
     }
 }
