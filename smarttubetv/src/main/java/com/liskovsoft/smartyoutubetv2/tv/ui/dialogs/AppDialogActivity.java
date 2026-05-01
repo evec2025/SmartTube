@@ -24,7 +24,8 @@ public class AppDialogActivity extends MotherActivity {
     private static final String TAG = AppDialogActivity.class.getSimpleName();
     private AppDialogFragment mFragment;
     private GlobalKeyTranslator mGlobalKeyTranslator;
-    
+    private boolean mIsBackPressed;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -64,6 +65,18 @@ public class AppDialogActivity extends MotherActivity {
         KeyEvent newEvent = mGlobalKeyTranslator.translate(event);
         return handleNavigation(newEvent) || super.dispatchKeyEvent(newEvent);
     }
+
+    @Override
+    public void onBackPressed() {
+        mIsBackPressed = true;
+        super.onBackPressed();
+    }
+
+    @Override
+    protected void onResume() {
+        mIsBackPressed = false;
+        super.onResume();
+    }
     
     private boolean handleNavigation(KeyEvent event) {
         if (event == null) {
@@ -101,6 +114,12 @@ public class AppDialogActivity extends MotherActivity {
         // NOTE: Fragment's onDestroy/onDestroyView are not reliable way to catch dialog finish
         Log.d(TAG, "Dialog finish");
         if (mFragment != null) { // fragment isn't created yet (expandable = true)
+            // Fix mouse DPAD emulation on API 28+
+            if (mIsBackPressed && mFragment.canGoBack()) {
+                mFragment.goBack();
+                return;
+            }
+
             mFragment.onFinish();
         }
 

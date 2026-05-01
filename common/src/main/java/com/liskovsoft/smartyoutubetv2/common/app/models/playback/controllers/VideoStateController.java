@@ -112,14 +112,10 @@ public class VideoStateController extends BasePlayerController {
         // Reset auto-save history timer
         mTickleLeft = 0;
 
-        // Restore before video loaded.
-        // This way we override auto track selection mechanism.
-        //restoreFormats();
-
         // Show user info instead of black screen.
-        if (!getPlayEnabled()) {
-            getPlayer().showOverlay(true);
-        }
+        //if (getPlayer() != null && !getPlayEnabled()) {
+        //    getPlayer().showOverlay(true);
+        //}
     }
 
     @Override
@@ -159,6 +155,12 @@ public class VideoStateController extends BasePlayerController {
 
         // NOTE: needed for the restore after oom crash?
         saveState(); // start watching?
+    }
+
+    @Override
+    public void onSeekPositionChanged(long positionMs) {
+        // Need a delay while player internal state changed
+        Utils.post(mUpdateHistory);
     }
 
     @Override
@@ -586,13 +588,13 @@ public class VideoStateController extends BasePlayerController {
         mIsPlayBlocked = block;
     }
 
+    public boolean getPlayEnabled() {
+        return mIsPlayEnabled;
+    }
+
     public void setPlayEnabled(boolean isPlayEnabled) {
         Log.d(TAG, "setPlayEnabled %s", isPlayEnabled);
         mIsPlayEnabled = isPlayEnabled;
-    }
-
-    public boolean getPlayEnabled() {
-        return mIsPlayEnabled;
     }
 
     private void restoreVolume() {
@@ -603,8 +605,8 @@ public class VideoStateController extends BasePlayerController {
         float newVolume = getPlayerData().getPlayerVolume();
 
         if (getPlayerTweaksData().isPlayerAutoVolumeEnabled()) {
-            //newVolume *= getVideo().volume;
-            newVolume = getVideo().volume;
+            newVolume *= getVideo().volume;
+            //newVolume = getVideo().volume;
         }
 
         if (getVideo().isShorts) {

@@ -140,7 +140,7 @@ public class SuggestionsController extends BasePlayerController {
 
     @Override
     public void onSeekPositionChanged(long positionMs) {
-        if (getPlayer().isControlsShown()) {
+        if (getPlayer() != null && getPlayer().isControlsShown()) {
             updateSeekPreviewTitle(positionMs);
         }
     }
@@ -279,6 +279,10 @@ public class SuggestionsController extends BasePlayerController {
     }
 
     public Video getNext() {
+        if (getPlayer() == null) {
+            return null;
+        }
+
         Video result = null;
         Video next = Playlist.instance().getNext();
         Video current = getPlayer().getVideo();
@@ -296,6 +300,10 @@ public class SuggestionsController extends BasePlayerController {
     }
 
     public Video getPrevious() {
+        if (getPlayer() == null) {
+            return null;
+        }
+
         Video result = getPreviousFromGroup(getPlayer().getVideo());
 
         if (result == null) {

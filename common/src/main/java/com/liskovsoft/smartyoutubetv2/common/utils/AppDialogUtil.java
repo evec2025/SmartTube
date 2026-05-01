@@ -463,7 +463,7 @@ public class AppDialogUtil {
 
     public static OptionCategory createAudioVolumeCategory(Context context, Runnable onSetCallback) {
         PlayerData playerData = PlayerData.instance(context);
-        PlayerTweaksData playerTweaksData = PlayerTweaksData.instance(context);
+        //PlayerTweaksData playerTweaksData = PlayerTweaksData.instance(context);
         String title = context.getString(R.string.player_volume);
 
         List<OptionItem> options = new ArrayList<>();
@@ -473,7 +473,7 @@ public class AppDialogUtil {
             options.add(UiOptionItem.from(String.format("%s%%", scalePercent),
                     optionItem -> {
                         playerData.setPlayerVolume(scale);
-                        playerTweaksData.setPlayerAutoVolumeEnabled(scalePercent == 100);
+                        //playerTweaksData.setPlayerAutoVolumeEnabled(scalePercent == 100);
 
                         if (scalePercent > 100) {
                             MessageHelpers.showLongMessage(context, R.string.volume_boost_warning);
@@ -567,9 +567,9 @@ public class AppDialogUtil {
         PlayerData playerData = PlayerData.instance(context);
         List<OptionItem> options = new ArrayList<>();
 
-        for (int positionPercent : Helpers.range(0, 100, 5)) {
+        for (float positionPercent : Helpers.range(0, 100, 2.5f)) {
             float position = positionPercent / 100f;
-            options.add(UiOptionItem.from(String.format("%s%%", positionPercent),
+            options.add(UiOptionItem.from(String.format("%s%%", Helpers.formatFloat(positionPercent)),
                     optionItem -> {
                         playerData.setSubtitlePosition(position);
                         Utils.showPlayerControls(context, false);

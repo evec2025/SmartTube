@@ -12,6 +12,7 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewStub;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -268,6 +269,10 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
     }
 
     private void applyTickle(MotionEvent event) {
+        if (getView() != null && !isOverlayShown()) {
+            getView().requestFocus(); // fix mouse DPAD emulation on API 28+
+        }
+
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
             tickle(); // show Player UI
         }
@@ -344,7 +349,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
 
         releasePlayer();
         // Improve memory usage??? Player may hangs on a second after close
-        Runtime.getRuntime().gc();
+        //Runtime.getRuntime().gc();
         initializePlayer();
     }
 
@@ -430,6 +435,7 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
             mDebugInfoManager.show(false);
             mDebugInfoManager = null;
         }
+        mPlayerInitializer.release();
         // Fix access calls when player isn't initialized
         mExoPlayerController.release();
         mPlayer = null;
@@ -548,7 +554,12 @@ public class PlaybackFragment extends SeekModePlaybackFragment implements Playba
         }
 
         if (mYouTubeOverlay == null) {
-            mYouTubeOverlay = getView().findViewById(R.id.youtube_overlay);
+            ViewStub youTubeOverlayStub = getView().findViewById(R.id.youtube_overlay_stub);
+            if (youTubeOverlayStub != null) {
+                mYouTubeOverlay = (YouTubeOverlay) youTubeOverlayStub.inflate();
+            } else {
+                mYouTubeOverlay = getView().findViewById(R.id.youtube_overlay);
+            }
         }
 
         mDoubleTapPlayerAdapter = new DoubleTapPlayerAdapter(getView());
