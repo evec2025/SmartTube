@@ -98,6 +98,8 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
+        item.isShuffled = false;
+
         if (!item.fromQueue && !item.belongsToPlaybackQueue()) {
             mPlaylist.add(item);
         } else {
@@ -135,8 +137,11 @@ public class VideoLoaderController extends BasePlayerController {
             //    enableFasterDataSource();
             //    restartEngine();
             //}
-            switchNextEngine();
-            restartEngine();
+
+            //switchNextEngine();
+            //restartEngine();
+
+            lowerVideoQuality();
         }
     }
 
@@ -215,7 +220,6 @@ public class VideoLoaderController extends BasePlayerController {
         Video next = mSuggestionsController.getNext();
 
         if (next != null) {
-            next.isShuffled = getVideo().isShuffled;
             openVideoInt(next);
         } else {
             waitMetadataSync(getVideo(), true);
@@ -299,6 +303,10 @@ public class VideoLoaderController extends BasePlayerController {
      * Force load suggestions.
      */
     private void loadSuggestions(Video item) {
+        if (getPlayer() == null) {
+            return;
+        }
+
         if (item != null) {
             mPlaylist.setCurrent(item);
             getPlayer().setVideo(item);
@@ -526,17 +534,14 @@ public class VideoLoaderController extends BasePlayerController {
             return;
         }
 
-        boolean restart = applyEngineErrorAction(type, rendererIndex, error);
-
-        if (restart) {
-            restartEngine();
-        } else {
-            reloadVideo();
-        }
+        applyEngineErrorAction(type, rendererIndex, error);
     }
 
-    private boolean applyEngineErrorAction(int type, int rendererIndex, Throwable error) {
-        boolean restartEngine = true;
+    private void applyEngineErrorAction(int type, int rendererIndex, Throwable error) {
+        final int ACTION_NONE = 0;
+        final int ACTION_RESTART_ENGINE = 1;
+        final int ACTION_RELOAD_VIDEO = 2;
+        int resultAction = ACTION_RESTART_ENGINE;
         boolean showMessage = true;
         String errorContent = error != null ? error.getMessage() : null;
         String errorTitle = getErrorTitle(type, rendererIndex);
@@ -556,13 +561,13 @@ public class VideoLoaderController extends BasePlayerController {
                 getPlayerData().setVideoBufferType(PlayerData.BUFFER_MEDIUM);
             } else {
                 getPlayerTweaksData().setSectionPlaylistEnabled(false);
-                restartEngine = false;
+                resultAction = ACTION_RELOAD_VIDEO;
             }
         } else if (Helpers.containsAny(errorContent, "Exception in CronetUrlRequest") && !getPlayerTweaksData().isNetworkErrorFixingDisabled()) {
             if (getVideo() != null && !getVideo().isLive) { // Finished live stream may provoke errors in Cronet
                 getPlayerTweaksData().setPlayerDataSource(PlayerTweaksData.PLAYER_DATA_SOURCE_DEFAULT);
             } else {
-                restartEngine = false;
+                resultAction = ACTION_RELOAD_VIDEO;
             }
         } else if (type == PlayerEventListener.ERROR_TYPE_SOURCE && rendererIndex == PlayerEventListener.RENDERER_INDEX_UNKNOWN) {
             // NOTE: Starts with any (url deciphered incorrectly)
@@ -598,23 +603,23 @@ public class VideoLoaderController extends BasePlayerController {
                 YouTubeServiceManager.instance().applyNoPlaybackFix(); // Response code: 403
             }
 
-            restartEngine = false;
+            resultAction = ACTION_RELOAD_VIDEO;
             showMessage = false;
         } else if (type == PlayerEventListener.ERROR_TYPE_RENDERER && rendererIndex == PlayerEventListener.RENDERER_INDEX_SUBTITLE) {
             // "Response code: 429" (subtitle error)
             // "Response code: 500" (subtitle error)
             disableSubtitles();
-            restartEngine = false;
+            resultAction = ACTION_RELOAD_VIDEO;
         } else if (type == PlayerEventListener.ERROR_TYPE_RENDERER && rendererIndex == PlayerEventListener.RENDERER_INDEX_VIDEO) {
             getPlayerData().setFormat(FormatItem.VIDEO_FHD_AVC_30);
             if (getPlayerTweaksData().isSWDecoderForced()) {
                 getPlayerTweaksData().setSWDecoderForced(false);
             } else {
-                restartEngine = false;
+                resultAction = ACTION_RELOAD_VIDEO;
             }
         } else if (type == PlayerEventListener.ERROR_TYPE_RENDERER && rendererIndex == PlayerEventListener.RENDERER_INDEX_AUDIO) {
             getPlayerData().setFormat(FormatItem.AUDIO_HQ_MP4A);
-            restartEngine = false;
+            resultAction = ACTION_RELOAD_VIDEO;
         } else if (type == PlayerEventListener.ERROR_TYPE_UNEXPECTED) {
             // Hide unknown errors on all devices
             //showMessage = true;
@@ -623,7 +628,7 @@ public class VideoLoaderController extends BasePlayerController {
                 //getPlayerData().setVideoBufferType(getPlayerData().getVideoBufferType() == PlayerData.BUFFER_LOW
                 //        ? PlayerData.BUFFER_MEDIUM : PlayerData.BUFFER_HIGH);
                 lowerVideoQuality();
-                restartEngine = false;
+                resultAction = ACTION_NONE;
             }
 
             if (errorContent == null) {
@@ -635,7 +640,14 @@ public class VideoLoaderController extends BasePlayerController {
             MessageHelpers.showLongMessage(getContext(), errorMessage);
         }
 
-        return restartEngine;
+        switch (resultAction) {
+            case ACTION_RESTART_ENGINE:
+                restartEngine();
+                break;
+            case ACTION_RELOAD_VIDEO:
+                reloadVideo();
+                break;
+        }
     }
 
     @SuppressLint("StringFormatMatches")
@@ -856,48 +868,61 @@ public class VideoLoaderController extends BasePlayerController {
     private void initRandomNext() {
         MediaServiceManager.instance().disposeActions();
 
-        if (getPlayer() == null || getPlayerData() == null || getVideo() == null || getVideo().playlistInfo == null ||
-                getPlayerData().getPlaybackMode() != PlayerConstants.PLAYBACK_MODE_SHUFFLE) {
+        PlaybackView player = getPlayer();
+        PlayerData playerData = getPlayerData();
+        Video current = getVideo();
+
+        if (player == null || playerData == null || current == null || current.playlistInfo == null ||
+                playerData.getPlaybackMode() != PlayerConstants.PLAYBACK_MODE_SHUFFLE) {
             return;
         }
 
-        if (getVideo().playlistInfo.getSize() != -1) {
+        // NOTE: Shuffle only user created playlists (size != -1)
+        if (current.playlistInfo.getSize() != -1) {
             Video video = new Video();
-            video.playlistId = getVideo().playlistId;
-            video.playlistIndex = Utils.getRandomIndex(getVideo().playlistInfo.getCurrentIndex(), getVideo().playlistInfo.getSize());
+            video.playlistId = current.playlistId;
+            video.playlistIndex = Utils.getRandomIndex(current.playlistInfo.getCurrentIndex(), current.playlistInfo.getSize());
             MediaServiceManager.instance().loadMetadata(video, randomMetadata -> {
                 if (randomMetadata.getNextVideo() == null) {
                     return;
                 }
 
-                getVideo().nextMediaItem = SimpleMediaItem.from(randomMetadata);
-                getPlayer().setNextTitle(Video.from(getVideo().nextMediaItem));
+                current.nextMediaItem = SimpleMediaItem.from(randomMetadata);
+                current.isShuffled = true;
+                player.setNextTitle(Video.from(current.nextMediaItem));
             });
-        } else {
-            VideoGroup topRow = getPlayer().getSuggestionsByIndex(0); // the playlist row
-            if (topRow != null) {
-                int currentIdx = topRow.indexOf(getVideo());
-                int randomIndex = Utils.getRandomIndex(currentIdx, topRow.getSize());
-
-                if (randomIndex != -1) {
-                    Video nextVideo = topRow.get(randomIndex);
-                    getVideo().nextMediaItem = SimpleMediaItem.from(nextVideo);
-                    getPlayer().setNextTitle(nextVideo);
-                }
-            }
         }
+        //else {
+        //    VideoGroup topRow = player.getSuggestionsByIndex(0); // the playlist row
+        //
+        //    if (topRow != null && topRow.isChapters()) {
+        //        topRow = player.getSuggestionsByIndex(1);
+        //    }
+        //
+        //    if (topRow != null) {
+        //        int currentIdx = topRow.indexOf(current);
+        //        int randomIndex = Utils.getRandomIndex(currentIdx, topRow.getSize());
+        //
+        //        if (randomIndex != -1) {
+        //            Video nextVideo = topRow.get(randomIndex);
+        //            current.nextMediaItem = SimpleMediaItem.from(nextVideo);
+        //            current.isShuffled = true;
+        //            player.setNextTitle(nextVideo);
+        //        }
+        //    }
+        //}
     }
 
-    private void loadRandomNext2() {
-        if (getPlayer() == null || getPlayerData() == null || getVideo() == null || getVideo().isShuffled ||
-                getVideo().shuffleMediaItem == null || getPlayerData().getPlaybackMode() != PlayerConstants.PLAYBACK_MODE_SHUFFLE) {
-            return;
-        }
-
-        getVideo().isShuffled = true;
-        getVideo().playlistParams = getVideo().shuffleMediaItem.getParams();
-        getController(SuggestionsController.class).loadSuggestions(getVideo());
-    }
+    //private void loadRandomNext2() {
+    //    if (getPlayer() == null || getPlayerData() == null || getVideo() == null || getVideo().isShuffled ||
+    //            getVideo().shuffleMediaItem == null || getPlayerData().getPlaybackMode() != PlayerConstants.PLAYBACK_MODE_SHUFFLE) {
+    //        return;
+    //    }
+    //
+    //    getVideo().isShuffled = true;
+    //    getVideo().playlistParams = getVideo().shuffleMediaItem.getParams();
+    //    getController(SuggestionsController.class).loadSuggestions(getVideo());
+    //}
 
     private void updateBufferingCountIfNeeded() {
         updateBufferingCount();

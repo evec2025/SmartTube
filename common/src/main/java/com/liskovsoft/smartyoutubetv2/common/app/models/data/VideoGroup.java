@@ -234,6 +234,10 @@ public class VideoGroup {
         return true;
     }
 
+    public boolean isChapters() {
+        return !isEmpty() && mVideos.get(0).isChapter;
+    }
+
     /**
      * Group position in multi-grid fragments<br/>
      * It isn't used on other types of fragments.
@@ -450,7 +454,7 @@ public class VideoGroup {
     }
 
     public void add(int idx, Video video) {
-        if (video == null || video.isEmpty() || isChannelBlocked(video)) {
+        if (video == null || video.isEmpty() || isChannelBlocked(video) || isWatchedAndRecommended(video)) {
             return;
         }
 
@@ -487,5 +491,19 @@ public class VideoGroup {
         String channelName = video.getAuthor();
 
         return blockedChannelData.containsChannel(channelId, channelName);
+    }
+
+    private boolean isWatchedAndRecommended(Video video) {
+        if (video == null) {
+            return false;
+        }
+
+        int type = getType();
+
+        if (type != MediaGroup.TYPE_HOME && type != MediaGroup.TYPE_SUGGESTIONS) {
+            return false;
+        }
+
+        return video.percentWatched > 95;
     }
 }
