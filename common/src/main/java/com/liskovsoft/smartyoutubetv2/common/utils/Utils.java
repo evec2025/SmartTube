@@ -106,14 +106,18 @@ public class Utils {
             "com.teamsmart.videomanager.tv",
             "org.smarttube.beta",
             "org.smarttube.stable",
-            "org.smarttube.fdroid",
             "app.smarttube.fdroid",
     };
-    public static final String[] BACKUP_PATTERNS = {
+    public static final String[] BACKUP_PREFS = {
             "yt_service_prefs.xml",
             "com.liskovsoft.appupdatechecker2.preferences.xml",
             "com.liskovsoft.sharedutils.prefs.GlobalPreferences.xml",
             "_preferences.xml" // before _ should be the app package name
+    };
+    public static final String[] BACKUP_DIRS = {
+            "app_prefs",
+            "yt_service_prefs",
+            "global_prefs"
     };
     private static final String SUPER_PASSWD = "smarttube";
     private static final int RANDOM_FAIL_REPEAT_TIMES = 10;
@@ -529,7 +533,7 @@ public class Utils {
     }
 
     public static void postDelayed(Runnable callback, long delayMs) {
-        if (callback == null) {
+        if (callback == null || delayMs < 0) {
             return;
         }
 

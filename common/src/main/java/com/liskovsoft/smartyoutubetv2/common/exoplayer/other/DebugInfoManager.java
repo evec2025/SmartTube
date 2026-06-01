@@ -37,6 +37,7 @@ import com.liskovsoft.smartyoutubetv2.common.autoframerate.internal.UhdHelper;
 import com.liskovsoft.smartyoutubetv2.common.exoplayer.versions.ExoUtils;
 import com.liskovsoft.smartyoutubetv2.common.misc.MediaServiceManager;
 import com.liskovsoft.smartyoutubetv2.common.prefs.AppPrefs;
+import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerData;
 import com.liskovsoft.smartyoutubetv2.common.prefs.PlayerTweaksData;
 import com.liskovsoft.smartyoutubetv2.common.utils.Utils;
 import com.liskovsoft.youtubeapi.app.models.AppInfo;
@@ -315,8 +316,9 @@ public final class DebugInfoManager implements Runnable, Player.EventListener {
         }
         //appendRow("Playback state", state);
         float boost = mPlayerInitializer.getVolumeBoost();
-        appendRow("Playback info",
-                String.format("paused=%s;state=%s;vol=%s", !mPlayer.getPlayWhenReady(), state, Helpers.formatFloat(boost * mPlayer.getVolume())));
+        appendRow("Playback info", String.format("paused=%s;state=%s", !mPlayer.getPlayWhenReady(), state));
+        appendRow("Volume",
+                String.format("original=%s;normalized=%s", PlayerData.instance(mContext).getPlayerVolume(), Helpers.formatFloat(boost * mPlayer.getVolume())));
     }
 
     private void appendDisplayModeId() {
@@ -380,7 +382,7 @@ public final class DebugInfoManager implements Runnable, Player.EventListener {
         appendRow("Device name", Helpers.getDeviceName());
         appendRow("Android SDK", VERSION.SDK_INT);
         appendRow("Disk cache size (MB)", String.valueOf(
-                (FileHelpers.getDirSize(FileHelpers.getInternalCacheDir(mContext)) + FileHelpers.getDirSize(FileHelpers.getExternalCacheDir(mContext)))
+                (FileHelpers.getDirSize(FileHelpers.getCacheDir(mContext)) + FileHelpers.getDirSize(FileHelpers.getExternalCacheDir(mContext)))
                         / 1024 / 1024
         ));
     }
